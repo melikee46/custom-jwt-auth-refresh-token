@@ -12,6 +12,38 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 
+// ==========================================
+// ADIM 10: GÜVENLİK (CORS & RATE LIMITING)
+// ==========================================
+
+// 1. CORS Ayarı: Sadece kendi frontend'imize izin veriyoruz (AllowAnyOrigin YASAK!)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("StrictCorsPolicy", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // Vite varsayılan portu
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials(); // HttpOnly Cookie'lerin gidip gelmesi için ŞART
+    });
+});
+
+// 2. Rate Limiting Ayarı: Brute Force saldırılarına karşı IP başına 1 dakikada 10 istek sınırı
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: partition => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 10,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+    options.RejectionStatusCode = 429; // 429 Too Many Requests
+});
+
 // Add DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -58,6 +90,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Güvenlik middleware'lerini devreye al
+app.UseCors("StrictCorsPolicy");
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

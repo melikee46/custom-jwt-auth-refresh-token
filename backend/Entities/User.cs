@@ -12,4 +12,7 @@ public class User
     
     [Required]
     public string PasswordHash { get; set; } = null!;
+
+    // Bire-Çok (1-N) ilişki: Bir kullanıcının birden fazla Refresh Token'ı (farklı cihazlardan oturumu) olabilir
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }
