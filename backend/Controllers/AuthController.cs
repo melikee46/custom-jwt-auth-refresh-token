@@ -21,9 +21,42 @@ public class AuthController : ControllerBase
         _tokenService = tokenService;
     }
 
+    [HttpPost("register")]
+    public async Task<IActionResult> Register([FromBody] RegisterDto request)
+    {
+        // 1. E-posta adresi daha önce kullanılmış mı?
+        var emailExists = await _context.Users.AnyAsync(u => u.Email == request.Email);
+        if (emailExists)
+        {
+            return Conflict("Bu e-posta adresi zaten kayıtlı.");
+        }
+
+        // 2. Şifreyi BCrypt ile hashle (work factor=12: brute-force'a karşı kasıtlı yavaşlık)
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, workFactor: 12);
+
+        // 3. Yeni kullanıcıyı oluştur (PasswordHash DÜZMETIN password değil!)
+        var user = new User
+        {
+            Email = request.Email,
+            PasswordHash = passwordHash
+        };
+
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+
+        // 4. Güvenlik: User entity'sini değil, sadece gerekli alanları dön (PasswordHash asla dışarı çıkmamalı!)
+        return CreatedAtAction(nameof(Register), new { id = user.Id }, new
+        {
+            user.Id,
+            user.Email,
+            Message = "Kayıt başarılı! Artık giriş yapabilirsiniz."
+        });
+    }
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto request)
     {
+
         // 1. Veritabanından e-posta ile kullanıcıyı bul
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
         if (user == null)
